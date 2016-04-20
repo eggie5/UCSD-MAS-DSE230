@@ -6,9 +6,9 @@ from pyspark import SparkContext
 sc = SparkContext()
 
 #Our solution runs in 56s for the 1 GB data, 58s for the 5 GB data, and 70s for the 20 GB data.
-# 1GB - 56s
-# 5GB - 58s
-# 20G = 70s
+# 1GB: 56s-84s (141, 79)
+# 5GB: 58s-87s (137)
+# 20G: 70s-105s
 
 
 # # Homework 2
@@ -118,13 +118,18 @@ env="prod"
 files=''
 path = "Data/hw2-files.txt"
 if env=="prod":
-    path = '../Data/hw2-files-1gb.txt'
+    # path = '../Data/hw2-files-1gb.txt'
+    path = '../Data/hw2-files-20gb.txt'
 with open(path) as f:
     files=','.join(f.readlines()).replace('\n','')
 
 rdd = sc.textFile(files).cache()
 
 print_count(rdd)
+
+# Timing information:
+# 5GB: 8s
+# 20GB: 17s
 
 
 # # Part 1: Parse JSON strings to JSON objects
@@ -193,8 +198,10 @@ def print_users_count(count):
 
 # In[45]:
 
-print_users_count(tweets.groupByKey().distinct().count())
+print_users_count(tweets.map(lambda x:x[0]).distinct().count())
 
+#5GB : 
+#20GB: 19s
 
 # # Part 2: Number of posts from each user partition
 
@@ -207,16 +214,18 @@ print_users_count(tweets.groupByKey().distinct().count())
 # In[65]:
 
 import cPickle as pickle
-
-
-# In[68]:
-
+#
+#
+# # In[68]:
+#
 path = 'Data/users-partition.pickle'
 if env=="prod":
     path = '../Data/users-partition.pickle'
 
 partitions = pickle.load(open(path, 'rb'))
 #{user_Id, partition_id} - {'583105596': 6}
+
+#20GB: 1s
 
 
 # (2) Count the number of posts from each user partition
@@ -227,7 +236,7 @@ partitions = pickle.load(open(path, 'rb'))
 
 # In[48]:
 
-pair_rdd = sc.parallelize(partitions.items()).rightOuterJoin(tweets).map(lambda (i, (p,t)): (7,1) if p<0 or p>6 else (p,1)).reduceByKey(lambda x,y: x+y).sortByKey(True).cache()
+count = tweets.map(lambda x:partition_bc.value.get(x[0], 7)).countByValue().items()
 
 
 # (3) Print the post count using the `print_post_count` function we provided.
@@ -254,8 +263,10 @@ def print_post_count(counts):
 
 # In[50]:
 
-print print_post_count(pair_rdd.collect())
+print print_post_count(count)
 
+
+#20GB: 5s
 
 # # Part 3:  Tokens that are relatively popular in each user partition
 
@@ -528,8 +539,11 @@ def print_tokens(tokens, gid = None):
 # In[53]:
 
 unique_tokens = tweets.flatMap(lambda tweet: tok.tokenize(tweet[1])).distinct()
-
+#
 print_count(unique_tokens)
+
+
+#20GB: 10s
 
 
 # (2) Tokens that are mentioned by too few users are usually not very interesting. So we want to only keep tokens that are mentioned by at least 100 users. Please filter out tokens that don't meet this requirement.
@@ -568,7 +582,7 @@ print_count(unique_tokens)
 
 splitter = lambda x: [(x[0],t) for t in x[1]]
 
-tokens = tweets.map(lambda tweet: (tweet[0], tok.tokenize(tweet[1]))).flatMap(lambda t: splitter(t)).distinct().cache()
+tokens = tweets.map(lambda tweet: (tweet[0], tok.tokenize(tweet[1]))).flatMap(lambda t: splitter(t)).distinct()
 
 popular_tokens = tokens.map(lambda x: (x[1], 1)).reduceByKey(lambda x,y: x+y).filter(lambda x: x[1]>100).sortBy(lambda x: x[1], ascending=False).cache()
 
@@ -579,9 +593,13 @@ print_count(popular_tokens)
 
 
 # In[56]:
-
+#
 print_tokens(popular_tokens.take(20))
 
+
+#20 GB 50 seconds! this is a slow section!!!
+# 45s
+# 42s
 
 # In[ ]:
 
@@ -615,8 +633,10 @@ def group_score(gid):
     group_scores = merged.map(lambda (token,(V,W)): (token, get_rel_popularity(V,W)))    .sortBy(lambda x: x[1], ascending=False)
     
     return group_scores
-
-
+    
+#the routines before here take 50s
+ 
+#This routine is taking: 87s
 # In[60]:
 
 for _gid in range(0,8):
