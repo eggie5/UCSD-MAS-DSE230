@@ -224,6 +224,7 @@ if env=="prod":
 
 partitions = pickle.load(open(path, 'rb'))
 #{user_Id, partition_id} - {'583105596': 6}
+partition_bc = sc.broadcast(partitions)
 
 #20GB: 1s
 
@@ -538,9 +539,17 @@ def print_tokens(tokens, gid = None):
 
 # In[53]:
 
-unique_tokens = tweets.flatMap(lambda tweet: tok.tokenize(tweet[1])).distinct()
-#
-print_count(unique_tokens)
+splitter = lambda x: [(x[0],t) for t in x[1]]
+
+unique_tokens = tweets.map(lambda tweet: (tweet[0], tok.tokenize(tweet[1])))\
+.flatMap(lambda t: splitter(t))\
+.distinct()
+
+ut1 = unique_tokens.map(lambda x: ((partition_bc.value.get(x[0],7), x[1]), 1)).cache()
+utr = ut1.reduceByKey(lambda x,y: x+y).cache()
+group_tokens = utr.map(lambda (x,y):(x[1],y)).reduceByKey(lambda x,y:x+y) ##format: (token, k_all)
+
+print_count(group_tokens)
 
 
 #20GB: 10s
@@ -580,21 +589,14 @@ print_count(unique_tokens)
 
 # In[54]:
 
-splitter = lambda x: [(x[0],t) for t in x[1]]
+popular_tokens = group_tokens.filter(lambda x: x[1]>100).cache()
 
-tokens = tweets.map(lambda tweet: (tweet[0], tok.tokenize(tweet[1]))).flatMap(lambda t: splitter(t)).distinct()
+# .sortBy(lambda x: x[1], ascending=False).cache()
 
-popular_tokens = tokens.map(lambda x: (x[1], 1)).reduceByKey(lambda x,y: x+y).filter(lambda x: x[1]>100).sortBy(lambda x: x[1], ascending=False).cache()
-
-
-# In[55]:
-
-print_count(popular_tokens)
+print_tokens(popular_tokens.top(20, lambda x:x[1]))
 
 
-# In[56]:
-#
-print_tokens(popular_tokens.take(20))
+
 
 
 #20 GB 50 seconds! this is a slow section!!!
@@ -616,21 +618,16 @@ print_tokens(popular_tokens.take(20))
 
 # i want to join the partion on the top100 tweets!, so  ineed to get it in the form (uid, tweet)
 twg = sc.parallelize(partitions.items()).rightOuterJoin(tweets).map(lambda (uid,(gid,tweet)): (uid,(7,tweet)) if gid<0 or gid>6 else (uid,(gid,tweet))).cache()
-
+#
 
 # In[59]:
 
 def group_score(gid):
-    group_tweets = twg.filter(lambda (x,y): y[0]==gid)
+    group_counts = utr.filter(lambda (x,y): x[0]==gid).map(lambda (x,y): (x[1], y))
 
-    group_tokens = group_tweets.map(lambda (x,y): (x, y[1]))    .map(lambda tweet: (tweet[0], tok.tokenize(tweet[1])))    .flatMap(lambda t: splitter(t))    .distinct()
-
-    group_counts = group_tokens.map(lambda x: (x[1], 1))    .reduceByKey(lambda x,y: x+y)    .sortBy(lambda x: x[1], ascending=False)
-
-    # now merge w/ top 100 to reduce
     merged = group_counts.join(popular_tokens)
     
-    group_scores = merged.map(lambda (token,(V,W)): (token, get_rel_popularity(V,W)))    .sortBy(lambda x: x[1], ascending=False)
+    group_scores = merged.map(lambda (token,(V,W)): (token, get_rel_popularity(V,W)))
     
     return group_scores
     
@@ -641,7 +638,7 @@ def group_score(gid):
 
 for _gid in range(0,8):
     _rdd = group_score(_gid)
-    print_tokens(_rdd.take(10), gid=_gid)
+    print_tokens(_rdd.top(10, lambda a:a[1]), gid=_gid)
 
 
 # It should print
