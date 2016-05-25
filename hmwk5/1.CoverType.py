@@ -42,34 +42,13 @@ Data=inputRDD.map(lambda line: [float(x) for x in line.split(',')]).map(lambda a
 
 # In[74]:
 
-# from time import time
-# errors={}
-# for depth in [10]:
-#     start=time()
-#     model=GradientBoostedTrees.trainClassifier(trainingData, categoricalFeaturesInfo={}, numIterations=10, maxDepth=depth)
-#     #print model.toDebugString()
-#     errors[depth]={}
-#     dataSets={'train':trainingData,'test':testData}
-#     for name in dataSets.keys():  # Calculate errors on train and test sets
-#         data=dataSets[name]
-#         Predicted=model.predict(data.map(lambda x: x.features))
-#
-#         LabelsAndPredictions = data.map(lambda lp: lp.label).zip(Predicted)
-#         Err = LabelsAndPredictions.filter(lambda (v,p): v != p).count()/float(data.count())
-#         errors[depth][name]=Err
-#     print depth,errors[depth],int(time()-start),'seconds'
-
-
-
-
-# ### Random Forests
 from time import time
 errors={}
-for depth in [20]:
+for depth in [10]:
     start=time()
-    model = RandomForest.trainClassifier(trainingData, numClasses=2, categoricalFeaturesInfo={},
-                                     numTrees=10, featureSubsetStrategy="auto",
-                                     impurity='gini', maxDepth=depth)
+    model=GradientBoostedTrees.trainClassifier(trainingData, categoricalFeaturesInfo={}, 
+                                               numIterations=10, maxDepth=depth, learningRate=0.25,
+                                              maxBins=54)
     #print model.toDebugString()
     errors[depth]={}
     dataSets={'train':trainingData,'test':testData}
@@ -81,6 +60,31 @@ for depth in [20]:
         Err = LabelsAndPredictions.filter(lambda (v,p): v != p).count()/float(data.count())
         errors[depth][name]=Err
     print depth,errors[depth],int(time()-start),'seconds'
+
+# Expected test error <= 13%
+# Expected running time <= 350 seconds
+# 10 {'test': 0.12974528709166785, 'train': 0.12251802782804264} 124 seconds
+
+
+# ### Random Forests
+# from time import time
+# errors={}
+# for depth in [20]:
+#     start=time()
+#     model = RandomForest.trainClassifier(trainingData, numClasses=2, categoricalFeaturesInfo={},
+#                                      numTrees=10, featureSubsetStrategy="auto",
+#                                      impurity='gini', maxDepth=depth)
+#     #print model.toDebugString()
+#     errors[depth]={}
+#     dataSets={'train':trainingData,'test':testData}
+#     for name in dataSets.keys():  # Calculate errors on train and test sets
+#         data=dataSets[name]
+#         Predicted=model.predict(data.map(lambda x: x.features))
+#
+#         LabelsAndPredictions = data.map(lambda lp: lp.label).zip(Predicted)
+#         Err = LabelsAndPredictions.filter(lambda (v,p): v != p).count()/float(data.count())
+#         errors[depth][name]=Err
+#     print depth,errors[depth],int(time()-start),'seconds'
 
 
 
